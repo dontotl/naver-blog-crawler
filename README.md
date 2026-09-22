@@ -1,54 +1,142 @@
-# 네이버 블로그 크롤러 (naver-blog-crawl)
+# Naver Blog Crawler & Exporter 📝🕸️
 
-특정 네이버 블로그(`blog.naver.com/{blogId}`)의 전체 게시글을 크롤링해서 게시글별 Markdown 파일 + 이미지로 저장하는 도구입니다. Claude Code 스킬(`SKILL.md`)과 Codex 등 다른 코딩 에이전트(`AGENTS.md`)에서 모두 인식하도록 구성했습니다.
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![BeautifulSoup](https://img.shields.io/badge/Parser-BeautifulSoup4-brightgreen?style=flat-square)](https://www.crummy.com/software/BeautifulSoup/)
+[![Markdownify](https://img.shields.io/badge/Converter-Markdownify-blue?style=flat-square)](https://github.com/matthewwithanm/python-markdownify)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-Claude%20Code%20%7C%20Codex-FF6F00?style=flat-square)](SKILL.md)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
-## ⚠️ 먼저 읽어주세요 (주의사항)
+특정 네이버 블로그(`blog.naver.com/{blogId}`)의 모든 포스팅을 전자동으로 수집하여 **게시글별 Markdown 문서 + 로컬 이미지 아카이브**로 변환·저장하는 CLI 도구입니다.
 
-- **개인 소유 블로그 백업 또는 연구 목적**으로만 사용하세요. 특정 블로그 1개를 대상으로 하는 도구이며, 여러 블로그를 대량으로 훑거나 네이버 검색 결과를 무차별 수집하는 용도로 확장하지 마세요.
-- 네이버 이용약관은 비인가 자동 수집(크롤링)을 금지하고 있습니다. 과도하게 빠른 요청을 보내면 요청자의 **IP가 일시적으로 차단되거나 캡차가 걸릴 수 있습니다.** 기본 딜레이(`--delay 0.7`)를 낮추거나 병렬로 요청하지 마세요.
-- 크롤링 결과물(타인의 게시글·이미지)은 **이 저장소에 커밋하지 마세요.** `.gitignore`에 `output/`이 이미 제외되어 있습니다 — 도구만 공개하고, 실제로 긁어온 콘텐츠는 로컬에만 보관하세요.
-- 본인 블로그가 아닌 콘텐츠를 재배포/재출판하면 저작권·이용약관 이슈가 생길 수 있습니다. 이 도구 자체는 문제가 없지만, **크롤링한 남의 글을 그대로 퍼가서 올리는 행위**가 위험합니다.
-- 상업적 대량 수집, 서버에 부하를 주는 용도로 사용 금지.
+독립적인 파이썬 스크립트로 동작할 뿐 아니라, **Claude Code 스킬(`SKILL.md`)** 및 **AI 코딩 에이전트(`AGENTS.md`)**와 완벽히 호환되도록 설계되었습니다.
 
-## 설치
+---
 
+## 🌟 주요 기능 (Features)
+
+- 📑 **비동기 API 기반 전수 수집**: `PostTitleListAsync.naver` 엔드포인트를 활용해 페이지 단위로 블로그의 모든 글 목록(logNo, 제목, 작성일, 카테고리)을 누락 없이 탐색.
+- 📱 **모바일 최적화 뷰 파싱**: `m.blog.naver.com` 구조를 분석하여 SmartEditor 3.0 및 레거시 에디터 태그로부터 본문, 텍스트, 코드 블록을 깔끔하게 추출.
+- 🖼️ **이미지 로컬 다운로드 및 상대경로 리매핑**: 포스트 내 삽입된 고화질 이미지를 `output/{logNo}/images/`에 로컬 저장하고, 생성되는 마크다운 본문에 상대 경로로 자동 링크.
+- ⏱️ **지능형 Rate Limiting & Safe Delay**: 네이버 서버에 무리를 주지 않고 IP 차단 및 캡차 발생을 방지하기 위한 안전한 딜레이(`--delay 0.7s`) 기본 내장.
+- 🤖 **AI Agent Skill Ready**: Claude Code 및 OpenAI Codex CLI에서 프롬프트 명령 한 번으로 크롤링을 트리거할 수 있는 메타데이터 명세 포함.
+
+---
+
+## 🏗️ 아키텍처 및 데이터 흐름
+
+```mermaid
+flowchart TD
+    CLI["CLI / Agent Skill\n(naver_blog_crawler.py)"]
+    
+    subgraph Step1["1. 목록 수집 (List Fetcher)"]
+        API["PostTitleListAsync.naver\n(Pagination: 30개 단위)"]
+        List["게시글 메타데이터 리스트\n[logNo, title, addDate, category]"]
+    end
+
+    subgraph Step2["2. 본문 및 이미지 파싱"]
+        Mobile["m.blog.naver.com/PostView.naver"]
+        BS4["BeautifulSoup4 & DOM Cleaner"]
+        ImgDownloader["Image Downloader\n(requests stream)"]
+        MDConvert["Markdownify HTML Parser"]
+    end
+
+    subgraph Step3["3. 구조화 로컬 저장 (Output Archive)"]
+        MDFile["{index}_{logNo}_{title}.md"]
+        ImagesDir["{logNo}/images/image_001.png"]
+    end
+
+    CLI --> API --> List
+    List --> Mobile --> BS4
+    BS4 --> ImgDownloader --> ImagesDir
+    BS4 --> MDConvert --> MDFile
+    MDFile -.->|상대경로 링크| ImagesDir
+```
+
+---
+
+## 🚀 빠른 시작 (Quick Start)
+
+### 1. 설치
 ```bash
 git clone https://github.com/dontotl/naver-blog-crawler.git
 cd naver-blog-crawler
 pip install -r requirements.txt
 ```
 
-Claude Code 스킬로 쓰려면 이 저장소를 `~/.claude/skills/naver-blog-crawl/`에 clone하면 자동으로 스킬 목록에 나타납니다.
-
-## 사용법
-
+### 2. 크롤링 실행
 ```bash
-python naver_blog_crawler.py --blog-id blacklion-trading --output-dir ./output
+python naver_blog_crawler.py --blog-id <블로그_아이디> --output-dir ./output
 ```
 
-| 옵션 | 기본값 | 설명 |
-|---|---|---|
-| `--blog-id` | (필수) | 크롤링할 네이버 블로그 아이디, 예: `blacklion-trading` |
-| `--output-dir` | `./output` | 결과 저장 디렉토리 |
-| `--delay` | `0.7` | 요청 사이 대기 시간(초). 낮추지 않기를 권장 |
+예시:
+```bash
+python naver_blog_crawler.py --blog-id tech-insights --output-dir ./backup_data --delay 0.8
+```
 
-실행하면:
-1. 블로그의 전체 게시글 목록(logNo)을 페이지 단위로 수집
-2. 게시글별로 모바일 뷰를 파싱해 제목/본문/이미지 URL 추출
-3. 이미지를 `output/{logNo}/images/`에 다운로드
-4. 게시글을 `output/{순번}_{logNo}_{제목}.md`로 저장 (이미지는 상대경로로 링크)
+---
 
-## 동작 원리
+## ⚙️ CLI 옵션 (Arguments)
 
-- 게시글 목록: `https://blog.naver.com/PostTitleListAsync.naver` (비공식 JSON, 네이버가 작은따옴표를 `\'`로 이스케이프하는 비표준 포맷이라 별도 보정 처리함)
-- 게시글 본문: `https://m.blog.naver.com/PostView.naver` (PC뷰의 iframe 구조보다 파싱이 쉬움). 신형 에디터는 `div.se-main-container`, 구형 에디터는 `div#postViewArea`를 사용
+| 파라미터 | 필수 여부 | 기본값 | 설명 |
+|---|:---:|:---:|---|
+| `--blog-id` | **필수** | - | 크롤링 대상 네이버 블로그 ID (예: `blog.naver.com/{blogId}`) |
+| `--output-dir` | 선택 | `./output` | 마크다운 및 이미지가 저장될 결과 디렉토리 경로 |
+| `--delay` | 선택 | `0.7` | 요청 간격(초). 서버 보호 및 차단 방지를 위해 0.5초 이상 유지 권장 |
 
-## 제한사항 / 알려진 이슈
+---
 
-- 네이버가 마크업을 바꾸면 선택자(selector)가 깨질 수 있습니다. 이 경우 `naver_blog_crawler.py`의 `fetch_post_content` 함수를 실제 HTML에 맞춰 수정하세요.
-- 비공식 엔드포인트를 사용하므로 예고 없이 동작이 바뀔 수 있습니다.
-- 비공개(서로이웃 공개, 비밀글) 게시글은 로그인 세션이 없어 수집되지 않습니다.
+## 📂 결과물 디렉토리 구조 (Output Sample)
 
-## 라이선스
+```text
+output/
+├── 0001_223456789012_오라클 클라우드 기초 아키텍처 정리.md
+├── 0002_223456789013_pgvector ANN 벤치마크 분석.md
+├── 223456789012/
+│   └── images/
+│       ├── image_001.png
+│       └── image_002.jpg
+└── 223456789013/
+    └── images/
+        └── image_001.png
+```
 
-MIT License — [LICENSE](LICENSE) 참고. 이 라이선스는 코드에만 적용되며, 크롤링한 콘텐츠의 저작권은 원저작자에게 있습니다.
+생성된 마크다운 문서 내부:
+```markdown
+# 오라클 클라우드 기초 아키텍처 정리
+
+- **작성일**: 2026.04.15. 14:30
+- **카테고리**: Cloud Architecture
+- **원문 링크**: https://blog.naver.com/tech-insights/223456789012
+
+---
+
+본문 내용이 마크다운 문법으로 변환되어 저장됩니다.
+
+![이미지](223456789012/images/image_001.png)
+```
+
+---
+
+## 🤖 Claude Code / AI 에이전트 스킬로 사용
+
+Claude Code 환경에서 스킬로 사용하려면 글로벌 스킬 디렉토리에 클론합니다:
+
+```bash
+git clone https://github.com/dontotl/naver-blog-crawler.git ~/.claude/skills/naver-blog-crawl
+```
+이후 Claude Code 대화창에서 자연어로 호출할 수 있습니다:
+> *"naver-blog-crawl 스킬을 사용해서 `my-blog-id` 블로그 글들을 `./blog_backup` 폴더에 마크다운으로 백업해줘."*
+
+---
+
+## ⚠️ 윤리적 크롤링 및 주의사항 (Ethical Use)
+
+- **개인 소유 블로그 백업 및 연구/아카이빙 목적**으로만 사용하십시오.
+- 네이버 이용약관은 무차별 대량 스크래핑을 제한하므로, 요청 딜레이(`--delay`)를 지나치게 낮추거나 무리한 병렬 요청을 수행하지 마십시오.
+- 수집된 타인의 저작물(글, 이미지)을 허가 없이 상업적으로 재배포하거나 무단 전재하지 마십시오.
+
+---
+
+## 📄 라이선스 (License)
+
+본 프로젝트는 [MIT License](LICENSE)를 따릅니다.
